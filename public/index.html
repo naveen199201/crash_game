@@ -1,0 +1,140 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Crypto Crash Game</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body class="bg-gray-900 text-white font-sans p-6">
+  <div class="max-w-3xl mx-auto">
+    <h1 class="text-3xl font-bold mb-4 text-center">🎮 Crash Round History (Candlestick Style)</h1>
+
+    <div class="mb-4">
+      <label class="block mb-1">Player ID:</label>
+      <input id="playerId" class="w-full p-2 rounded text-black" type="text" placeholder="Paste player ID" />
+    </div>
+
+    <div class="grid grid-cols-3 gap-2 mb-4">
+      <input id="usdAmount" type="number" value="10" class="p-2 rounded text-black" placeholder="USD Amount">
+      <select id="currency" class="p-2 rounded text-black">
+        <option value="BTC">BTC</option>
+        <option value="ETH">ETH</option>
+      </select>
+      <div class="flex gap-1">
+        <button onclick="placeBet()" class="bg-green-600 px-4 py-2 rounded">💰 Bet</button>
+        <button onclick="cashout()" class="bg-yellow-500 px-4 py-2 rounded">🏃 Cashout</button>
+      </div>
+    </div>
+
+    <div class="bg-white p-2 rounded overflow-x-auto">
+      <canvas id="chart" class="rounded" style="min-width: 600px;"></canvas>
+    </div>
+
+    <div class="text-center mt-2">
+      <span id="liveMultiplier" class="text-xl font-bold"></span>
+    </div>
+
+    <div id="log" class="mt-6 space-y-2 text-sm"></div>
+  </div>
+
+  <script>
+    const socket = io("http://localhost:8000");
+    const logDiv = document.getElementById("log");
+    const chartCtx = document.getElementById("chart").getContext("2d");
+    const liveMultiplier = document.getElementById("liveMultiplier");
+
+    let round = 0;
+    const MAX_ROUNDS = 10;
+
+    const chart = new Chart(chartCtx, {
+      type: 'bar',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Crash Multiplier',
+          data: [],
+          backgroundColor: [],
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        animation: false,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            title: { display: true, text: 'Crash Multiplier' },
+            min: 1
+          },
+          x: {
+            title: { display: true, text: 'Round' }
+          }
+        },
+        plugins: {
+          legend: { display: false }
+        }
+      }
+    });
+
+    socket.on("roundStart", () => {
+      liveMultiplier.textContent = "Multiplier: 1.00x";
+    });
+
+    socket.on("multiplierUpdate", ({ multiplier }) => {
+      liveMultiplier.textContent = `Multiplier: ${parseFloat(multiplier).toFixed(2)}x`;
+    });
+
+    socket.on("roundCrash", ({ crashPoint }) => {
+      round++;
+      const label = `R${round}`;
+
+      if (chart.data.labels.length >= MAX_ROUNDS) {
+        chart.data.labels.shift();
+        chart.data.datasets[0].data.shift();
+        chart.data.datasets[0].backgroundColor.shift();
+      }
+
+      chart.data.labels.push(label);
+      chart.data.datasets[0].data.push(crashPoint);
+      chart.data.datasets[0].backgroundColor.push(crashPoint > 2 ? '#10b981' : '#ef4444');
+      chart.update();
+
+      log(`💥 Round ${round} crashed at ${crashPoint.toFixed(2)}x`);
+      liveMultiplier.textContent = `💥 Crashed at ${crashPoint.toFixed(2)}x`;
+    });
+
+    socket.on("playerCashout", ({ playerId, payout, usdValue }) => {
+      log(`✅ ${playerId.slice(0, 6)}... cashed out: ${payout.toFixed(6)} (${usdValue.toFixed(2)} USD)`);
+    });
+
+    function placeBet() {
+      const playerId = document.getElementById("playerId").value.trim();
+      const usdAmount = parseFloat(document.getElementById("usdAmount").value);
+      const currency = document.getElementById("currency").value;
+
+      fetch("/api/bet/place", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId, usdAmount, currency }),
+      })
+      .then(res => res.json())
+      .then(data => log("📝 Bet placed: " + JSON.stringify(data)))
+      .catch(err => log("❌ Bet failed: " + err));
+    }
+
+    function cashout() {
+      const playerId = document.getElementById("playerId").value.trim();
+      socket.emit("cashout", { playerId });
+    }
+
+    function log(msg) {
+      const p = document.createElement("p");
+      p.textContent = msg;
+      logDiv.prepend(p);
+    }
+  </script>
+</body>
+</html>
