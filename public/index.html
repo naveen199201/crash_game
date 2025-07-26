@@ -41,7 +41,7 @@
   </div>
 
   <script>
-    const socket = io("http://localhost:8000");
+    const socket = io("${process.env.SOCKET_SERVER_URL}");
     const logDiv = document.getElementById("log");
     const chartCtx = document.getElementById("chart").getContext("2d");
     const liveMultiplier = document.getElementById("liveMultiplier");
